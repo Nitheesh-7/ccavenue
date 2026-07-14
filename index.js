@@ -51,6 +51,26 @@ function decrypt(encText, workingKey) {
 // Health check
 app.get("/", (req, res) => res.send("CCAvenue backend running"));
 
+// 🔍 Safe debug — shows presence, length, and a non-reversible key fingerprint.
+// Never exposes the actual secret values. Remove before final production.
+app.get("/debug", (req, res) => {
+  const keyFingerprint = WORKING_KEY
+    ? crypto.createHash("md5").update(WORKING_KEY).digest("hex").substring(0, 8)
+    : null;
+  res.json({
+    TEST_MODE: TEST_MODE,
+    MERCHANT_ID_loaded: !!MERCHANT_ID,
+    MERCHANT_ID_length: MERCHANT_ID ? MERCHANT_ID.length : 0,
+    ACCESS_CODE_loaded: !!ACCESS_CODE,
+    ACCESS_CODE_length: ACCESS_CODE ? ACCESS_CODE.length : 0,
+    WORKING_KEY_loaded: !!WORKING_KEY,
+    WORKING_KEY_length: WORKING_KEY ? WORKING_KEY.length : 0,
+    // Fingerprint lets you confirm the key matches without revealing it.
+    WORKING_KEY_fingerprint: keyFingerprint,
+    BASE_URL: BASE_URL,
+  });
+});
+
 // 🚀 Initiate Payment — Wix links to /pay?amount=X
 app.get("/pay", (req, res) => {
   const order_id = "ORD" + Date.now();
