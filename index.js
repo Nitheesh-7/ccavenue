@@ -19,16 +19,9 @@ const BASE_URL = process.env.BASE_URL || "https://ccavenue-1.onrender.com";
 const SUCCESS_URL = process.env.SUCCESS_URL;
 const FAIL_URL = process.env.FAIL_URL;
 
-// ─── SCREEN-ONLY TEST MODE ──────────────────────────────────────────────
-// Set TEST_MODE=true in Render env vars ONLY to check the CCAvenue payment
-// screen loads before the Render URL is whitelisted.
-// In this mode redirect/cancel point at the already-registered live domain,
-// so CCAvenue accepts the request and shows the screen.
-// ⚠️ Confirm the screen appears, then CLOSE THE TAB. Do NOT enter card
-// details — a completed payment would create a real order on the live site.
-// Set TEST_MODE=false (or remove it) for normal operation.
+
 const TEST_MODE = process.env.TEST_MODE === "true";
-const REGISTERED_LIVE_URL = "https://airgunsshooting20.wixstudio.com/1aci";;
+const REGISTERED_LIVE_URL = "https://airgunsshooting20.wixstudio.com/1aci";
 
 // CCAvenue's required fixed 16-byte IV.
 const IV = Buffer.from([
@@ -76,9 +69,7 @@ app.get("/pay", (req, res) => {
   const order_id = "ORD" + Date.now();
   const amount = req.query.amount || "1";
 
-  // In TEST_MODE, point at the already-registered live URL so the screen loads.
-  // Otherwise point at our own /response and /cancel routes (requires the
-  // Render URL to be added to CCAvenue's Web Store URL list).
+
   const redirect_url = TEST_MODE ? REGISTERED_LIVE_URL : `${BASE_URL}/response`;
   const cancel_url = TEST_MODE ? REGISTERED_LIVE_URL : `${BASE_URL}/cancel`;
 
