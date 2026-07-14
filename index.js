@@ -46,13 +46,16 @@ app.get("/pay", (req, res) => {
 
   const querystring = require("querystring");
 
+  // ⚠️ TEMP TEST: Using whitelisted Wix URL as redirect so CCAvenue accepts it
+  const WHITELISTED_URL = "https://airgunsshooting20.wixstudio.com/1aci";
+
   const data = querystring.stringify({
     merchant_id: MERCHANT_ID,
     order_id: order_id,
     currency: "INR",
     amount: amount,
-    redirect_url: `${process.env.BASE_URL}/response`,
-    cancel_url: `${process.env.BASE_URL}/response`,
+    redirect_url: WHITELISTED_URL,
+    cancel_url: WHITELISTED_URL,
     language: "EN"
   });
 
