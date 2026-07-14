@@ -73,6 +73,19 @@ app.get("/pay", (req, res) => {
   `);
 });
 
+// 🔍 Debug endpoint - verify credentials are loaded (shows partial values only)
+app.get("/debug", (req, res) => {
+  res.json({
+    MERCHANT_ID_loaded: !!MERCHANT_ID,
+    MERCHANT_ID_value: MERCHANT_ID ? MERCHANT_ID.substring(0, 4) + "****" : "NOT SET",
+    ACCESS_CODE_loaded: !!ACCESS_CODE,
+    ACCESS_CODE_value: ACCESS_CODE ? ACCESS_CODE.substring(0, 4) + "****" : "NOT SET",
+    WORKING_KEY_loaded: !!process.env.WORKING_KEY,
+    WORKING_KEY_length: process.env.WORKING_KEY ? process.env.WORKING_KEY.trim().length : 0,
+    BASE_URL: process.env.BASE_URL || "NOT SET"
+  });
+});
+
 // 🔁 Payment Response
 app.post("/response", (req, res) => {
   const encResp = req.body.encResp;
