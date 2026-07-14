@@ -1,8 +1,8 @@
 require("dotenv").config();
 
-
 const express = require("express");
 const crypto = require("crypto");
+const querystring = require("querystring");
 const app = express();
 
 app.use(express.urlencoded({ extended: true }));
@@ -10,53 +10,66 @@ app.use(express.json());
 
 const MERCHANT_ID = process.env.MERCHANT_ID;
 const ACCESS_CODE = process.env.ACCESS_CODE;
-const WORKING_KEY = process.env.WORKING_KEY.trim();
+const WORKING_KEY = (process.env.WORKING_KEY || "").trim();
 
-// 🔐 Encrypt function
+// Your Render backend's own base URL — must be whitelisted in CCAvenue.
+const BASE_URL = process.env.BASE_URL || "https://ccavenue-1.onrender.com";
+
+// Frontend (Wix) pages to send the user back to at the very end.
+const SUCCESS_URL = process.env.SUCCESS_URL;
+const FAIL_URL = process.env.FAIL_URL;
+
+// ─── SCREEN-ONLY TEST MODE ──────────────────────────────────────────────
+// Set TEST_MODE=true in Render env vars ONLY to check the CCAvenue payment
+// screen loads before the Render URL is whitelisted.
+// In this mode redirect/cancel point at the already-registered live domain,
+// so CCAvenue accepts the request and shows the screen.
+// ⚠️ Confirm the screen appears, then CLOSE THE TAB. Do NOT enter card
+// details — a completed payment would create a real order on the live site.
+// Set TEST_MODE=false (or remove it) for normal operation.
+const TEST_MODE = process.env.TEST_MODE === "true";
+const REGISTERED_LIVE_URL = "https://www.airguns.co.in";
+
+// CCAvenue's required fixed 16-byte IV.
+const IV = Buffer.from([
+  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+]);
+
 function encrypt(text, workingKey) {
-  const key = crypto.createHash("md5").update(workingKey).digest(); // ✅ buffer (NOT hex)
-
-  const iv = '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f';
-  const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
-
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  return encrypted;
+  const key = crypto.createHash("md5").update(workingKey).digest();
+  const cipher = crypto.createCipheriv("aes-128-cbc", key, IV);
+  return cipher.update(text, "utf8", "hex") + cipher.final("hex");
 }
 
-// 🔓 Decrypt function
 function decrypt(encText, workingKey) {
   const key = crypto.createHash("md5").update(workingKey).digest();
-
-  const iv = '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f';
-  const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
-
-  let decrypted = decipher.update(encText, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
+  const decipher = crypto.createDecipheriv("aes-128-cbc", key, IV);
+  return decipher.update(encText, "hex", "utf8") + decipher.final("utf8");
 }
 
+// Health check
+app.get("/", (req, res) => res.send("CCAvenue backend running"));
 
-// 🚀 Initiate Payment
+// 🚀 Initiate Payment — Wix links to /pay?amount=X
 app.get("/pay", (req, res) => {
   const order_id = "ORD" + Date.now();
-  const amount = req.query.amount || "100"; // Read from query param or fallback to 100
+  const amount = req.query.amount || "1";
 
-  const querystring = require("querystring");
-
-  // ⚠️ TEMP TEST: Using whitelisted main domain URL as redirect so CCAvenue accepts it
-  const WHITELISTED_URL = "https://www.airguns.co.in";
+  // In TEST_MODE, point at the already-registered live URL so the screen loads.
+  // Otherwise point at our own /response and /cancel routes (requires the
+  // Render URL to be added to CCAvenue's Web Store URL list).
+  const redirect_url = TEST_MODE ? REGISTERED_LIVE_URL : `${BASE_URL}/response`;
+  const cancel_url = TEST_MODE ? REGISTERED_LIVE_URL : `${BASE_URL}/cancel`;
 
   const data = querystring.stringify({
     merchant_id: MERCHANT_ID,
     order_id: order_id,
     currency: "INR",
     amount: amount,
-    redirect_url: WHITELISTED_URL,
-    cancel_url: WHITELISTED_URL,
-    language: "EN"
+    redirect_url: redirect_url,
+    cancel_url: cancel_url,
+    language: "EN",
   });
 
   const encRequest = encrypt(data, WORKING_KEY);
@@ -73,32 +86,45 @@ app.get("/pay", (req, res) => {
   `);
 });
 
-// 🔍 Debug endpoint - verify credentials are loaded (shows partial values only)
-app.get("/debug", (req, res) => {
-  res.json({
-    MERCHANT_ID_loaded: !!MERCHANT_ID,
-    MERCHANT_ID_value: MERCHANT_ID ? MERCHANT_ID.substring(0, 4) + "****" : "NOT SET",
-    ACCESS_CODE_loaded: !!ACCESS_CODE,
-    ACCESS_CODE_value: ACCESS_CODE ? ACCESS_CODE.substring(0, 4) + "****" : "NOT SET",
-    WORKING_KEY_loaded: !!process.env.WORKING_KEY,
-    WORKING_KEY_length: process.env.WORKING_KEY ? process.env.WORKING_KEY.trim().length : 0,
-    BASE_URL: process.env.BASE_URL || "NOT SET"
-  });
+// Parse CCAvenue's decrypted "a=b&c=d" response safely.
+function parseResponse(decrypted) {
+  return querystring.parse(decrypted);
+}
+
+// 🔁 Payment Response — CCAvenue POSTs here after payment
+app.post("/response", (req, res) => {
+  try {
+    const encResp = req.body.encResp;
+    if (!encResp) return res.redirect(FAIL_URL);
+
+    const decrypted = decrypt(encResp, WORKING_KEY);
+    const params = parseResponse(decrypted);
+
+    console.log("CCAvenue Response:", params.order_id, params.order_status);
+
+    // Trust only the decrypted status — never the frontend.
+    if (params.order_status === "Success") {
+      return res.redirect(SUCCESS_URL);
+    }
+    return res.redirect(FAIL_URL);
+  } catch (err) {
+    console.error("Response decrypt error:", err.message);
+    return res.redirect(FAIL_URL);
+  }
 });
 
-// 🔁 Payment Response
-app.post("/response", (req, res) => {
-  const encResp = req.body.encResp;
-
-  const decrypted = decrypt(encResp, WORKING_KEY);
-
-  console.log("CCAvenue Response:", decrypted);
-
-  if (decrypted.includes("order_status=Success")) {
-    return res.redirect(process.env.SUCCESS_URL);
-  } else {
-    return res.redirect(process.env.FAIL_URL);
+// 🚫 Cancel — CCAvenue POSTs here if user cancels
+app.post("/cancel", (req, res) => {
+  try {
+    const encResp = req.body.encResp;
+    if (encResp) {
+      const params = parseResponse(decrypt(encResp, WORKING_KEY));
+      console.log("Cancelled:", params.order_id, params.order_status);
+    }
+  } catch (err) {
+    console.error("Cancel decrypt error:", err.message);
   }
+  return res.redirect(FAIL_URL);
 });
 
 const PORT = process.env.PORT || 3000;
