@@ -28,7 +28,7 @@ const FAIL_URL = process.env.FAIL_URL;
 // details — a completed payment would create a real order on the live site.
 // Set TEST_MODE=false (or remove it) for normal operation.
 const TEST_MODE = process.env.TEST_MODE === "true";
-const REGISTERED_LIVE_URL = "https://www.airguns.co.in";
+const REGISTERED_LIVE_URL = "https://airgunsshooting20.wixstudio.com/1aci";;
 
 // CCAvenue's required fixed 16-byte IV.
 const IV = Buffer.from([
