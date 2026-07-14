@@ -16,8 +16,7 @@ const WORKING_KEY = process.env.WORKING_KEY.trim();
 function encrypt(text, workingKey) {
   const key = crypto.createHash("md5").update(workingKey).digest(); // ✅ buffer (NOT hex)
 
-  const iv = Buffer.alloc(16, 0);
-
+  const iv = '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f';
   const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
 
   let encrypted = cipher.update(text, "utf8", "hex");
@@ -30,8 +29,7 @@ function encrypt(text, workingKey) {
 function decrypt(encText, workingKey) {
   const key = crypto.createHash("md5").update(workingKey).digest();
 
-  const iv = Buffer.alloc(16, 0);
-
+  const iv = '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f';
   const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
 
   let decrypted = decipher.update(encText, "hex", "utf8");
